@@ -46,8 +46,8 @@
             filePath = "VT_final/Controllers/AlbumViewController.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "115"
-            endingLineNumber = "115"
+            startingLineNumber = "110"
+            endingLineNumber = "110"
             landmarkName = "fetchFlickrPhotoURLs()"
             landmarkType = "7">
          </BreakpointContent>
@@ -78,25 +78,9 @@
             filePath = "VT_final/Controllers/AlbumViewController.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "145"
-            endingLineNumber = "145"
+            startingLineNumber = "125"
+            endingLineNumber = "125"
             landmarkName = "fetchFlickrPhotoURLs()"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
-            uuid = "034BB7FC-C59B-400D-9028-E2410C2E5EB1"
-            shouldBeEnabled = "No"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "VT_final/Controllers/AlbumViewController.swift"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "383"
-            endingLineNumber = "383"
-            landmarkName = "collectionView(_:layout:sizeForItemAt:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>

@@ -9,40 +9,32 @@ import UIKit
 import MapKit
 import CoreData
 
-class AlbumViewController: UIViewController, UICollectionViewDelegate, MKMapViewDelegate, UICollectionViewDataSource, NSFetchedResultsControllerDelegate, UIGestureRecognizerDelegate,UICollectionViewDelegateFlowLayout {
+class AlbumViewController: UIViewController, UICollectionViewDelegateFlowLayout, UICollectionViewDelegate, MKMapViewDelegate, UICollectionViewDataSource, NSFetchedResultsControllerDelegate, UIGestureRecognizerDelegate {
     
     @IBOutlet weak var newCollectionButton: UIBarButtonItem!
     @IBOutlet weak var mapView: MKMapView!
     @IBOutlet weak var flowLayout: UICollectionViewFlowLayout!
     @IBOutlet weak var photoCollectionView: UICollectionView!
     
+    /// var with core data
     let context = (UIApplication.shared.delegate as! AppDelegate).persistentContainer.viewContext
     var pin: Pin!
     var fetchedResultsController:NSFetchedResultsController<Photo>!
     
-    
-    
-    
+    /// view setup
     let collectionCellID = "CollectionViewCell"
-    
-    
-    let itemsPerRowPortrait: CGFloat = 5.0
-    let itemsPerRowLandscape: CGFloat = 6.0
-    
-    let actInd: UIActivityIndicatorView = UIActivityIndicatorView()
-    
-    var frameSize: CGSize = CGSize(width: 300.0, height: 300.0)
+    let actInd=UIActivityIndicatorView()
     let sectionInsets = UIEdgeInsets(top: 5.0,
     left: 5.0,
-    bottom: 50.0,
+    bottom: 5.0,
     right: 5.0)
     
+    
     var blockOperation = BlockOperation()
- 
-    
-    
     var photosURL: [URL?] = []
     
+    
+    // MARK: set up methods
     func setUpMap() {
         self.mapView.delegate = self
         self.mapView.isZoomEnabled = false
@@ -68,6 +60,14 @@ class AlbumViewController: UIViewController, UICollectionViewDelegate, MKMapView
         
         flowLayout.scrollDirection = .vertical
         self.photoCollectionView.collectionViewLayout = self.flowLayout
+    }
+    
+    func setUpCollectionCell(){
+        let itemsPerRow:CGFloat=5.0
+        let paddingSpace = sectionInsets.left * (itemsPerRow + 1)
+        let availableWidth = photoCollectionView.frame.size.width - paddingSpace
+        let widthPerItem = availableWidth / itemsPerRow
+        flowLayout.itemSize = CGSize(width: widthPerItem, height: widthPerItem)
     }
     
     func showActivityIndicator(uiView: UIView) {
@@ -98,20 +98,15 @@ class AlbumViewController: UIViewController, UICollectionViewDelegate, MKMapView
         actInd.stopAnimating()
     }
     
-   
-    
-    // MARK: Flickr and DB
-    
-    
     /// fetch photoData
     func fetchFlickrPhotoURLs() {
         
-       actInd.startAnimating()
+        actInd.startAnimating()
         newCollectionButton.isEnabled = false
-        
+        photosURL=[]
         
         FlickrClient.search(lat: pin!.latitude, long: pin!.longitude) { flickrPhotos, error in
-            
+            // for each round of fetch, will generate a new array of photoID
             if error == nil {
                 var id: Int = 0
                 for photo in flickrPhotos {
@@ -122,25 +117,10 @@ class AlbumViewController: UIViewController, UICollectionViewDelegate, MKMapView
                     newPhoto.pin=self.pin
                     try? self.context.save()
                     self.photoCollectionView.reloadData()
-                    /*
-                    FlickrClient.downloadPosterImage(photoURL: url) { (data, error) in
-                        if let data = data {
-                            let newPhoto = Photo(context:self.context)
-                            newPhoto.photoOrder=Int16(id)
-                            newPhoto.imageData=Data(data)
-                            newPhoto.pin=self.pin
-                            try? self.context.save()
-                            self.photoCollectionView.reloadData()
-                        } else {
-                            print("error in downloading data from a photo")
-                        }
-                    }*/
                     id+=1
                 }
-                //self.noImage.isHidden = true
                 id = 0
             }
-            
         }
         setupFetchedResultsController()
         self.photoCollectionView.reloadData()
@@ -148,6 +128,67 @@ class AlbumViewController: UIViewController, UICollectionViewDelegate, MKMapView
         newCollectionButton.isEnabled = true
     }
     
+    
+    /// gesture
+    @objc func handleLongGesture(gesture: UILongPressGestureRecognizer) {
+        switch(gesture.state) {
+        case .began:
+            guard let selectedIndexPath = photoCollectionView.indexPathForItem(at: gesture.location(in: photoCollectionView)) else {
+                break
+            }
+            photoCollectionView.beginInteractiveMovementForItem(at: selectedIndexPath)
+        case .changed:
+            photoCollectionView.updateInteractiveMovementTargetPosition(gesture.location(in: gesture.view!))
+        case .ended:
+            photoCollectionView.endInteractiveMovement()
+        default:
+            photoCollectionView.cancelInteractiveMovement()
+        }
+        
+    }
+    
+    @IBAction func getNewCollection(_ sender: Any){
+        if let  objects = self.fetchedResultsController.fetchedObjects {
+            let photosToHide = self.photoCollectionView.indexPathsForVisibleItems
+            for photoToHide in photosToHide {
+                self.photoCollectionView.cellForItem(at: photoToHide)!.isHidden = true
+            }
+            actInd.startAnimating()
+            for object in objects{
+                self.context.performAndWait {
+                    self.context.delete(object)
+                    try? self.context.save()
+                }
+            }
+        }
+        self.photoCollectionView.reloadData()
+        self.photoCollectionView!.numberOfItems(inSection: 0)
+        self.context.refreshAllObjects()
+        try? self.context.save()
+        self.fetchFlickrPhotoURLs()
+    }
+    
+    func centerMapOnLocation(_ location: CLLocation, mapView: MKMapView) {
+        let regionRadius: CLLocationDistance = 1000
+        let coordinateRegion = MKCoordinateRegion(center: location.coordinate,
+                                                  latitudinalMeters: regionRadius * 2.0, longitudinalMeters: regionRadius * 2.0)
+        mapView.setRegion(coordinateRegion, animated: true)
+    }
+    
+    func setUpPin() {
+        var annotations = [MKPointAnnotation]()
+        let lat = CLLocationDegrees((pin.value(forKeyPath: "latitude") as? Double) ?? 0.0 )
+        let long = CLLocationDegrees((pin.value(forKeyPath: "longitude") as? Double) ?? 0.0 )
+        let coordinate = CLLocationCoordinate2D(latitude: lat, longitude: long)
+        let annotation = MKPointAnnotation()
+        annotation.coordinate = coordinate
+        annotations.append(annotation)
+        self.mapView.addAnnotations(annotations)
+    }
+    
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive press: UIPress) -> Bool {
+        return true
+    }
     
     //MARK: View Life Cycle
     
@@ -157,8 +198,9 @@ class AlbumViewController: UIViewController, UICollectionViewDelegate, MKMapView
         setUpMap()
         setUpGesture()
         setUpCollection()
-       //showActivityIndicator(uiView: noImage)
+        setUpCollectionCell()
         setupFetchedResultsController()
+        showActivityIndicator(uiView: actInd)
         
         //Fetching the image urls from Flickr
         if (fetchedResultsController.fetchedObjects!.isEmpty == true) {
@@ -177,79 +219,6 @@ class AlbumViewController: UIViewController, UICollectionViewDelegate, MKMapView
         super.viewDidDisappear(animated)
         fetchedResultsController = nil
     }
-    
-    @objc func handleLongGesture(gesture: UILongPressGestureRecognizer) {
-        switch(gesture.state) {
-        
-        case .began:
-            guard let selectedIndexPath = photoCollectionView.indexPathForItem(at: gesture.location(in: photoCollectionView)) else {
-                break
-            }
-            photoCollectionView.beginInteractiveMovementForItem(at: selectedIndexPath)
-            
-        case .changed:
-            photoCollectionView.updateInteractiveMovementTargetPosition(gesture.location(in: gesture.view!))
-            
-        case .ended:
-            photoCollectionView.endInteractiveMovement()
-            
-        default:
-            photoCollectionView.cancelInteractiveMovement()
-       
-        
-        }
-        
-    }
-    
-    @IBAction func getNewCollection(_ sender: Any){
-        
-        if let  objects = self.fetchedResultsController.fetchedObjects {
-            
-            let photosToHide = self.photoCollectionView.indexPathsForVisibleItems
-        
-            for photoToHide in photosToHide {
-                self.photoCollectionView.cellForItem(at: photoToHide)!.isHidden = true
-            }
-        
-          //  self.actIndicator.startAnimating()
-            for object in objects{
-                self.context.performAndWait {
-                    self.context.delete(object)
-                    try? self.context.save()
-                }
-            }
-        }
-        self.photoCollectionView.reloadData()
-        self.photoCollectionView!.numberOfItems(inSection: 0)
-        self.context.refreshAllObjects()
-        try? self.context.save()
-        self.fetchFlickrPhotoURLs()
-    }
-    
-    func centerMapOnLocation(_ location: CLLocation, mapView: MKMapView) {
-        
-        let regionRadius: CLLocationDistance = 1000
-        let coordinateRegion = MKCoordinateRegion(center: location.coordinate,
-                                                  latitudinalMeters: regionRadius * 2.0, longitudinalMeters: regionRadius * 2.0)
-        mapView.setRegion(coordinateRegion, animated: true)
-        
-    }
-    
-    func setUpPin() {
-        var annotations = [MKPointAnnotation]()
-        let lat = CLLocationDegrees((pin.value(forKeyPath: "latitude") as? Double) ?? 0.0 )
-        let long = CLLocationDegrees((pin.value(forKeyPath: "longitude") as? Double) ?? 0.0 )
-        let coordinate = CLLocationCoordinate2D(latitude: lat, longitude: long)
-        let annotation = MKPointAnnotation()
-        annotation.coordinate = coordinate
-        annotations.append(annotation)
-        self.mapView.addAnnotations(annotations)
-    }
-    
-    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive press: UIPress) -> Bool {
-        return true
-    }
-    
     
     // MARK: CollectionViewDelegate + Datasource
   
@@ -274,17 +243,13 @@ class AlbumViewController: UIViewController, UICollectionViewDelegate, MKMapView
             }
             self.fetchedResultsController.object(at: sourceIndexPath).photoOrder = Int16(destinationIndexPath.item+1)
         }
-
-        //remove and insert in array in case if images are still downloading.
-            if self.photosURL.count != 0 {
-                let temp = self.photosURL[sourceIndexPath.item]
-                self.photosURL.remove(at: sourceIndexPath.item)
-                self.photosURL.insert(temp, at: destinationIndexPath.item)
+        if self.photosURL.count != 0 {
+            let temp = self.photosURL[sourceIndexPath.item]
+            self.photosURL.remove(at: sourceIndexPath.item)
+            self.photosURL.insert(temp, at: destinationIndexPath.item)
         }
-        
-            try? self.context.save()
+        try? self.context.save()
         self.setupFetchedResultsController()
-        
     }
     
     
@@ -292,127 +257,47 @@ class AlbumViewController: UIViewController, UICollectionViewDelegate, MKMapView
     func numberOfSections(in collectionView: UICollectionView) -> Int {
         return fetchedResultsController.sections?.count ?? 1
     }
+    
     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
-        let sectionInfo = self.fetchedResultsController.sections![section]
-        print("sectionInfo.numberOfObjects\(sectionInfo.numberOfObjects)and sectionInfo: \(self.fetchedResultsController.sections!)")
-      //  (sectionInfo.numberOfObjects == 0 ? (noImage.isHidden = false) : (noImage.isHidden = true) )
-        return sectionInfo.numberOfObjects
+        return self.fetchedResultsController.sections?[section].numberOfObjects ?? 0
     }
 
     // Populate the cells
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
-       
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: collectionCellID , for: indexPath) as! CollectionViewCell
-        
         if let cellPhotoData = self.fetchedResultsController.object(at: indexPath).imageData {
             print("adding a photo in the album")
             cell.imageVie.image = UIImage(data: cellPhotoData)
-        //Downloading the Images from URLs
         } else if  photosURL.count != 0 {
             if let url = photosURL[indexPath.row] {
                 cell.actInd.startAnimating()
-                FlickrClient.downloadPosterImage(photoURL: url) { data, error in
-                if error != nil {
-                    print("error in downloading data from a photo")
-                } else {
-                    if data != nil {
-                        let cellPhoto = self.fetchedResultsController.object(at: indexPath)
-                        cellPhoto.imageData = data
-                        try? self.context.save()
-                        cell.imageVie.image = UIImage(data: data!)
-                        cell.actInd.stopAnimating()
+                FlickrClient.downloadPosterImage(photoURL: url) { (data, error) in
+                    if error != nil {
+                        print("error in downloading data from a photo")
+                    } else {
+                        if data != nil {
+                            let cellPhoto = self.fetchedResultsController.object(at: indexPath)
+                            cellPhoto.imageData = data
+                            try? self.context.save()
+                            cell.imageVie.image = UIImage(data: data!)
+                            cell.actInd.stopAnimating()
                         }
                     }
                 }
             }
         }
-        
-       return cell
+        return cell
     }
+    
     
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         let objectToDelete = fetchedResultsController.object(at: indexPath)
         self.context.delete(objectToDelete)
+        //collectionView.deleteItems(at: [indexPath])
         try? self.context.save()
     }
-    /*
-    
-    func collectionView(
-        _ collectionView: UICollectionView,
-        layout collectionViewLayout: UICollectionViewLayout,
-        sizeForItemAt indexPath: IndexPath
-      ) -> CGSize {
-        // 2
-        let paddingSpace = sectionInsets.left * itemsPerRow
-        let availableWidth = UIScreen.main.bounds.width - paddingSpace
-        let widthPerItem = availableWidth / itemsPerRow
-        
-        return CGSize(width: widthPerItem, height: widthPerItem)
-      }
-      
-      // 3
-      func collectionView(
-        _ collectionView: UICollectionView,
-        layout collectionViewLayout: UICollectionViewLayout,
-        insetForSectionAt section: Int
-      ) -> UIEdgeInsets {
-        return sectionInsets
-      }
-      
-      // 4
-      /*func collectionView(
-        _ collectionView: UICollectionView,
-        layout collectionViewLayout: UICollectionViewLayout,
-        minimumLineSpacingForSectionAt section: Int
-      ) -> CGFloat {
-        return sectionInsets.left
-      }*/
-    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, minimumInteritemSpacingForSectionAt section: Int) -> CGFloat {
-        
-        return 0
-    }
-  // minimum line spacing for each section
-  func collectionView(_ collectionView: UICollectionView,
-                      layout collectionViewLayout: UICollectionViewLayout,
-                      minimumLineSpacingForSectionAt section: Int) -> CGFloat {
-    return 0
-  }
-*/
-
-    func collectionView(_ collectionView: UICollectionView,
-                        layout collectionViewLayout: UICollectionViewLayout,
-                        sizeForItemAt indexPath: IndexPath) -> CGSize {
-        let itemsPerRow:CGFloat=4.0
-
-      //let itemsPerRow: CGFloat = UIScreen.main.bounds.width > UIScreen.main.bounds.height ? itemsPerRowLandscape : itemsPerRowPortrait //I need to resolve for 3.0 for portrait
-      let paddingSpace = sectionInsets.left * (itemsPerRow + 1)
-      let availableWidth = UIScreen.main.bounds.width - paddingSpace
-      let widthPerItem = availableWidth / itemsPerRow
-      
-      frameSize = CGSize(width: widthPerItem, height: widthPerItem)
-      
-      return frameSize
-    }
     
     
-    func collectionView(_ collectionView: UICollectionView,
-                        layout collectionViewLayout: UICollectionViewLayout,
-                        insetForSectionAt section: Int) -> UIEdgeInsets {
-      return sectionInsets
-    }
-
-      func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, minimumInteritemSpacingForSectionAt section: Int) -> CGFloat {
-          
-          return sectionInsets.left
-      }
-    
-    
-    func collectionView(_ collectionView: UICollectionView,
-                        layout collectionViewLayout: UICollectionViewLayout,
-                        minimumLineSpacingForSectionAt section: Int) -> CGFloat {
-      return sectionInsets.left
-    }
-
 }
 
 
@@ -427,8 +312,6 @@ extension AlbumViewController {
                 blockOperation.addExecutionBlock {
                     self.photoCollectionView.insertItems(at: [newIndexPath])
                 }
-                
-                
             case .delete:
                 guard let indexPath = indexPath else {break}
                 blockOperation.addExecutionBlock {
@@ -441,14 +324,13 @@ extension AlbumViewController {
                     self.photoCollectionView.reloadItems(at: [indexPath])
                     }
                 }
-           /* case .move:
+            case .move:
                 guard let newIndexPath = newIndexPath else {break}
                 blockOperation.addExecutionBlock {
                     DispatchQueue.main.async {
                     self.photoCollectionView.moveItem(at: indexPath!, to: newIndexPath)
                     }
-                }*/
-        
+                }
             default:
                 fatalError("Invalid change type in controller(_:didChange:atSectionIndex:for:). Only .insert/delete/move/update should be possible.")
         }
